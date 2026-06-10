@@ -18,7 +18,52 @@ import { useAuth } from '@/hooks/useAuth';
 import { LinearGradient } from 'expo-linear-gradient';
 import { UserRepository } from '@/repositories/UserRepository';
 import { supabase } from '@/config/supabase';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 
+// ─── Avatar upload to Supabase Storage ────────────────────────────────────────
+async function uploadAvatar(userId: string, uri: string): Promise<string | null> {
+  try {
+    const fileExt = 'jpg';
+    const filePath = `${userId}/avatar.${fileExt}`;
+
+    let fileBody: any;
+
+    if (Platform.OS === 'web') {
+      const response = await fetch(uri);
+      fileBody = await response.blob();
+    } else {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      fileBody = decode(base64);
+    }
+
+    const { error } = await supabase.storage
+      .from('avatar-photos')
+      .upload(filePath, fileBody, {
+        contentType: 'image/jpeg',
+        upsert: true, // overwrite existing avatar
+      });
+
+    if (error) {
+      console.error('Avatar upload error:', error);
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatar-photos')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  } catch (err) {
+    console.error('Avatar upload failed:', err);
+    return null;
+  }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, refreshProfile, isMock } = useAuth();
@@ -32,28 +77,93 @@ export default function ProfileScreen() {
   );
   const xpToNextLevel = xpPerLevel - currentXPInLevel;
 
+  // username edit state
   const [username, setUsername] = useState(user?.username || '');
+
+  // avatar state: localUri = picked but not saved; remoteUri = saved on Supabase
+  const remoteAvatar = (user as any)?.avatar_url as string | undefined;
+  const fallbackAvatar = UserRepository.getUserAvatar(user?.username || '');
+  const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
+  const displayAvatar = localAvatarUri || remoteAvatar || fallbackAvatar;
+
+  // save states
+  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const btnScale = useRef(new Animated.Value(1)).current;
 
-  const animPress = () => {
+  const animPress = () =>
     Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
-  };
-  const animRelease = () => {
+  const animRelease = () =>
     Animated.spring(btnScale, { toValue: 1, useNativeDriver: true }).start();
+
+  // ── Pick photo from gallery ──────────────────────────────────────────────────
+  const handlePickAvatar = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'İzin Gerekli',
+          'Galeri fotoğraflarına erişmek için izin vermeniz gerekiyor.',
+          [{ text: 'Tamam' }]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],   // square crop for avatar
+        quality: 0.85,
+      });
+
+      if (!result.canceled && result.assets.length > 0) {
+        setLocalAvatarUri(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error('Gallery pick error:', err);
+      Alert.alert('Hata', 'Fotoğraf seçilirken bir sorun oluştu.');
+    }
   };
 
+  // ── Save changes (avatar + username) ──────────────────────────────────────
   const handleSave = async () => {
     if (!user?.id || !username.trim()) return;
     setSaving(true);
+
     try {
+      let avatarUrl: string | undefined = remoteAvatar;
+
+      // 1. Upload avatar if user picked a new one
+      if (localAvatarUri) {
+        setUploading(true);
+        if (!isMock) {
+          const url = await uploadAvatar(user.id, localAvatarUri);
+          if (!url) {
+            Alert.alert('Hata', 'Profil fotoğrafı yüklenirken bir sorun oluştu.');
+            setUploading(false);
+            setSaving(false);
+            return;
+          }
+          avatarUrl = url;
+        } else {
+          // In mock mode just keep the local URI as the display avatar
+          avatarUrl = localAvatarUri;
+        }
+        setUploading(false);
+      }
+
+      // 2. Update users table
       if (!isMock) {
+        const updates: Record<string, any> = { username: username.trim() };
+        if (avatarUrl) updates.avatar_url = avatarUrl;
+
         const { error } = await supabase
           .from('users')
-          .update({ username: username.trim() })
+          .update(updates)
           .eq('id', user.id);
+
         if (error) {
           Alert.alert('Hata', 'Profil güncellenirken bir sorun oluştu.');
           setSaving(false);
@@ -61,6 +171,9 @@ export default function ProfileScreen() {
         }
         await refreshProfile();
       }
+
+      // Clear local preview (the persisted one will come from refreshProfile)
+      setLocalAvatarUri(null);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
@@ -70,8 +183,8 @@ export default function ProfileScreen() {
     }
   };
 
-  const avatarUri = UserRepository.getUserAvatar(user?.username || '');
   const team = UserRepository.getUserTeam(user?.username || '');
+  const isBusy = saving || uploading;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -90,22 +203,45 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Avatar Section */}
+        {/* ── Avatar Section ── */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatarWrapper}>
-            <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+          <Pressable
+            style={styles.avatarWrapper}
+            onPress={handlePickAvatar}
+            disabled={isBusy}
+          >
+            {/* Photo ring to indicate it's tappable */}
+            <View style={[
+              styles.avatarRing,
+              localAvatarUri ? styles.avatarRingChanged : null,
+            ]}>
+              {uploading ? (
+                <View style={styles.avatarUploadingOverlay}>
+                  <ActivityIndicator color="#fff" size="large" />
+                </View>
+              ) : null}
+              <Image source={{ uri: displayAvatar }} style={styles.avatarImage} />
+            </View>
+
+            {/* Edit badge */}
             <LinearGradient
-              colors={['#4648d4', '#6b38d4']}
+              colors={localAvatarUri ? ['#4caf50', '#66bb6a'] : ['#4648d4', '#6b38d4']}
               style={styles.avatarEditBadge}
             >
-              <Text style={styles.avatarEditIcon}>✏️</Text>
+              <Text style={styles.avatarEditIcon}>
+                {localAvatarUri ? '✓' : '📷'}
+              </Text>
             </LinearGradient>
-          </View>
+          </Pressable>
+
+          <Text style={styles.avatarHint}>
+            {localAvatarUri ? 'Seçildi – kaydetmeyi unutma!' : 'Fotoğrafa dokun ve değiştir'}
+          </Text>
           <Text style={styles.levelTitle}>Seviye {level} Kahraman</Text>
           <Text style={styles.teamTag}>{team} Departmanı</Text>
         </View>
 
-        {/* Stats Bento */}
+        {/* ── Stats Bento ── */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, styles.statCardCenter]}>
             <Text style={styles.statIcon}>⭐</Text>
@@ -124,14 +260,14 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Form Fields */}
+        {/* ── Form Fields ── */}
         <View style={styles.formSection}>
           <Text style={styles.sectionTitle}>Profil Bilgileri</Text>
 
           <View style={styles.fieldWrapper}>
             <Text style={styles.fieldLabel}>Kullanıcı Adı</Text>
             <View style={styles.inputContainer}>
-              <Text style={styles.inputIcon}>👤</Text>
+              <Text style={styles.inputIconText}>👤</Text>
               <TextInput
                 style={styles.input}
                 value={username}
@@ -147,10 +283,10 @@ export default function ProfileScreen() {
           <View style={styles.fieldWrapper}>
             <Text style={styles.fieldLabel}>E-posta (Salt Okunur)</Text>
             <View style={[styles.inputContainer, styles.inputDisabled]}>
-              <Text style={styles.inputIcon}>🔒</Text>
+              <Text style={styles.inputIconText}>🔒</Text>
               <TextInput
                 style={[styles.input, styles.inputTextDisabled]}
-                value={user?.id ? `kullanici@officequest.app` : '—'}
+                value={user?.id ? 'kullanici@officequest.app' : '—'}
                 editable={false}
                 placeholderTextColor="#767586"
               />
@@ -158,23 +294,19 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Journey Progress Card */}
+        {/* ── Journey Progress Card ── */}
         <LinearGradient
           colors={['#6063ee', '#8455ef']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.journeyCard}
         >
-          {/* Decorative icon */}
           <Text style={styles.journeyDecor}>🏆</Text>
-
           <Text style={styles.journeyTitle}>Yolculuk İlerlemesi</Text>
           <Text style={styles.journeyDesc}>
             Seviye {level + 1}'e ulaşmak için{' '}
             <Text style={{ fontWeight: '700' }}>{xpToNextLevel} XP</Text> daha kazanman gerekiyor.
           </Text>
-
-          {/* Progress bar */}
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
           </View>
@@ -185,19 +317,18 @@ export default function ProfileScreen() {
           </View>
         </LinearGradient>
 
-        {/* Bottom spacer for sticky button */}
-        <View style={{ height: 100 }} />
+        <View style={{ height: 110 }} />
       </ScrollView>
 
-      {/* Sticky Save Button */}
+      {/* ── Sticky Save Button ── */}
       <View style={styles.stickyBar}>
         <Animated.View style={{ transform: [{ scale: btnScale }] }}>
           <Pressable
-            style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+            style={[styles.saveBtn, isBusy && styles.saveBtnDisabled]}
             onPress={handleSave}
             onPressIn={animPress}
             onPressOut={animRelease}
-            disabled={saving}
+            disabled={isBusy}
           >
             <LinearGradient
               colors={saved ? ['#4caf50', '#66bb6a'] : ['#4648d4', '#6063ee']}
@@ -205,8 +336,13 @@ export default function ProfileScreen() {
               end={{ x: 1, y: 0 }}
               style={styles.saveBtnGradient}
             >
-              {saving ? (
-                <ActivityIndicator color="#fff" size="small" />
+              {isBusy ? (
+                <View style={styles.saveBtnRow}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={[styles.saveBtnText, { marginLeft: 10 }]}>
+                    {uploading ? 'Fotoğraf yükleniyor...' : 'Kaydediliyor...'}
+                  </Text>
+                </View>
               ) : (
                 <Text style={styles.saveBtnText}>
                   {saved ? '✓  Değişiklikler Kaydedildi!' : '💾  Değişiklikleri Kaydet'}
@@ -220,6 +356,7 @@ export default function ProfileScreen() {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -254,50 +391,73 @@ const styles = StyleSheet.create({
     color: '#4648d4',
     letterSpacing: -0.3,
   },
-  headerSpacer: {
-    width: 40,
-  },
-  scroll: {
-    flex: 1,
-  },
+  headerSpacer: { width: 40 },
+  scroll: { flex: 1 },
   content: {
     paddingHorizontal: 20,
     paddingTop: 24,
   },
-  // Avatar
+
+  // ── Avatar ──
   avatarSection: {
     alignItems: 'center',
     marginBottom: 28,
   },
   avatarWrapper: {
     position: 'relative',
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  avatarImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+  avatarRing: {
+    width: 124,
+    height: 124,
+    borderRadius: 62,
     borderWidth: 3,
-    borderColor: '#ffffff',
+    borderColor: '#4648d4',
+    padding: 2,
     shadowColor: '#4648d4',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
     shadowRadius: 16,
+    elevation: 8,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  avatarRingChanged: {
+    borderColor: '#4caf50',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 60,
+  },
+  avatarUploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(70,72,212,0.5)',
+    borderRadius: 60,
+    zIndex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarEditBadge: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    bottom: 2,
+    right: 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 2,
     borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarEditIcon: {
-    fontSize: 14,
+    fontSize: 16,
+  },
+  avatarHint: {
+    fontSize: 12,
+    color: '#767586',
+    fontWeight: '500',
+    marginBottom: 6,
   },
   levelTitle: {
     fontSize: 15,
@@ -314,7 +474,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 20,
   },
-  // Stats
+
+  // ── Stats ──
   statsRow: {
     flexDirection: 'row',
     gap: 10,
@@ -335,18 +496,13 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  statCardCenter: {
-    backgroundColor: '#f5f2fe',
-  },
+  statCardCenter: { backgroundColor: '#f5f2fe' },
   statCardHighlight: {
     backgroundColor: '#efecf8',
     borderColor: 'rgba(96,99,238,0.2)',
     borderWidth: 1,
   },
-  statIcon: {
-    fontSize: 20,
-    marginBottom: 4,
-  },
+  statIcon: { fontSize: 20, marginBottom: 4 },
   statLabel: {
     fontSize: 10,
     fontWeight: '600',
@@ -359,10 +515,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1b1b23',
   },
-  // Form
-  formSection: {
-    marginBottom: 24,
-  },
+
+  // ── Form ──
+  formSection: { marginBottom: 24 },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
@@ -371,9 +526,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 14,
   },
-  fieldWrapper: {
-    marginBottom: 16,
-  },
+  fieldWrapper: { marginBottom: 16 },
   fieldLabel: {
     fontSize: 13,
     fontWeight: '600',
@@ -399,20 +552,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f2fe',
     opacity: 0.7,
   },
-  inputIcon: {
-    fontSize: 16,
-    marginRight: 10,
-  },
+  inputIconText: { fontSize: 16, marginRight: 10 },
   input: {
     flex: 1,
     fontSize: 15,
     color: '#1b1b23',
     fontWeight: '400',
   },
-  inputTextDisabled: {
-    color: '#767586',
-  },
-  // Journey Card
+  inputTextDisabled: { color: '#767586' },
+
+  // ── Journey Card ──
   journeyCard: {
     borderRadius: 20,
     padding: 20,
@@ -467,7 +616,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
-  // Sticky bar
+
+  // ── Sticky Save ──
   stickyBar: {
     position: 'absolute',
     bottom: 0,
@@ -489,13 +639,15 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  saveBtnDisabled: {
-    opacity: 0.7,
-  },
+  saveBtnDisabled: { opacity: 0.75 },
   saveBtnGradient: {
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  saveBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   saveBtnText: {
     color: '#ffffff',

@@ -62,7 +62,7 @@ export default function HomeScreen() {
             <Pressable style={styles.avatarContainer} onPress={() => router.push('/profile')}>
               <Image
                 style={styles.avatar}
-                source={{ uri: UserRepository.getUserAvatar(user?.username || '') }}
+                source={{ uri: (user as any)?.avatar_url || UserRepository.getUserAvatar(user?.username || '') }}
               />
               <View style={styles.levelBadge}>
                 <Text style={styles.levelBadgeText}>LVL {level}</Text>
