@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { SymbolView } from 'expo-symbols';
 
-export default function LoginScreen() {
+export default function LoginScreen({ onNavigateToSignup }: { onNavigateToSignup?: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -118,7 +118,7 @@ export default function LoginScreen() {
 
           <View style={styles.footerContainer}>
             <Text style={styles.footerText}>Hesabınız yok mu? </Text>
-            <TouchableOpacity onPress={() => router.push('/signup')}>
+            <TouchableOpacity onPress={onNavigateToSignup || (() => router.push('/signup'))}>
               <Text style={styles.footerLink}>Kayıt Ol</Text>
             </TouchableOpacity>
           </View>

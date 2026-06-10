@@ -14,6 +14,7 @@ interface AuthState {
   session: Session | null;
   user: UserProfile | null;
   loading: boolean;
+  isMock: boolean;
   initialize: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, username: string) => Promise<{ error: any }>;
@@ -21,34 +22,54 @@ interface AuthState {
   refreshProfile: () => Promise<void>;
 }
 
+const isPlaceholder = process.env.EXPO_PUBLIC_SUPABASE_URL === undefined || 
+                      process.env.EXPO_PUBLIC_SUPABASE_URL === '' || 
+                      process.env.EXPO_PUBLIC_SUPABASE_URL.includes('placeholder-project');
+
 export const useAuth = create<AuthState>((set, get) => ({
   session: null,
   user: null,
   loading: true,
+  isMock: isPlaceholder,
 
   initialize: async () => {
-    // Get initial session
-    const { data: { session } } = await supabase.auth.getSession();
-    set({ session, loading: session ? true : false });
-    
-    if (session) {
-      await get().refreshProfile();
-    } else {
-      set({ loading: false });
+    if (isPlaceholder) {
+      console.warn("Using MOCK Auth mode because Supabase keys are placeholders.");
+      set({ session: null, user: null, loading: false });
+      return;
     }
 
-    // Listen to changes
-    supabase.auth.onAuthStateChange(async (_event, session) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
       set({ session, loading: session ? true : false });
+      
       if (session) {
         await get().refreshProfile();
       } else {
-        set({ user: null, loading: false });
+        set({ loading: false });
       }
-    });
+    } catch (err) {
+      console.warn('Supabase getSession failed, falling back to mock mode:', err);
+      set({ session: null, user: null, loading: false, isMock: true });
+    }
+
+    try {
+      supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (get().isMock) return;
+        set({ session, loading: session ? true : false });
+        if (session) {
+          await get().refreshProfile();
+        } else {
+          set({ user: null, loading: false });
+        }
+      });
+    } catch (err) {
+      console.warn('Supabase auth listener setup failed:', err);
+    }
   },
 
   refreshProfile: async () => {
+    if (get().isMock) return;
     const { session } = get();
     if (!session) return;
     try {
@@ -59,8 +80,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         .single();
       
       if (error) {
-        // If profile not created yet, retry or set loading false
-        console.warn('Profile not found in public.users, retrying...', error);
+        console.warn('Profile not found in public.users:', error);
         set({ loading: false });
         return;
       }
@@ -72,15 +92,57 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   signIn: async (email, password) => {
+    if (get().isMock) {
+      set({ loading: true });
+      const mockSession = {
+        access_token: 'mock-token',
+        token_type: 'bearer',
+        expires_in: 3600,
+        user: { id: 'mock-user-id', email }
+      } as any;
+      const mockProfile: UserProfile = {
+        id: 'mock-user-id',
+        username: email.split('@')[0],
+        points: 120,
+        current_multiplier: 1.0,
+        created_at: new Date().toISOString()
+      };
+      setTimeout(() => {
+        set({ session: mockSession, user: mockProfile, loading: false });
+      }, 500);
+      return { error: null };
+    }
+
     set({ loading: true });
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) set({ loading: false });
     return { error };
   },
 
   signUp: async (email, password, username) => {
+    if (get().isMock) {
+      set({ loading: true });
+      const mockSession = {
+        access_token: 'mock-token',
+        token_type: 'bearer',
+        expires_in: 3600,
+        user: { id: 'mock-user-id', email }
+      } as any;
+      const mockProfile: UserProfile = {
+        id: 'mock-user-id',
+        username,
+        points: 0,
+        current_multiplier: 1.0,
+        created_at: new Date().toISOString()
+      };
+      setTimeout(() => {
+        set({ session: mockSession, user: mockProfile, loading: false });
+      }, 500);
+      return { error: null };
+    }
+
     set({ loading: true });
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -94,6 +156,11 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
+    if (get().isMock) {
+      set({ session: null, user: null, loading: false });
+      return { error: null };
+    }
+
     set({ loading: true });
     const { error } = await supabase.auth.signOut();
     set({ session: null, user: null, loading: false });

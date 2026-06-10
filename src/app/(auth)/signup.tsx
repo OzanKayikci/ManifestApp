@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 
-export default function SignupScreen() {
+export default function SignupScreen({ onNavigateToLogin }: { onNavigateToLogin?: () => void }) {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -123,7 +123,7 @@ export default function SignupScreen() {
 
           <View style={styles.footerContainer}>
             <Text style={styles.footerText}>Zaten hesabınız var mı? </Text>
-            <TouchableOpacity onPress={() => router.push('/login')}>
+            <TouchableOpacity onPress={onNavigateToLogin || (() => router.push('/login'))}>
               <Text style={styles.footerLink}>Giriş Yap</Text>
             </TouchableOpacity>
           </View>

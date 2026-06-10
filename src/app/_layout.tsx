@@ -1,32 +1,21 @@
-import { DarkTheme, DefaultTheme, ThemeProvider, Slot, useRouter, useSegments } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { useColorScheme, ActivityIndicator, View } from 'react-native';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
+import LoginScreen from './(auth)/login';
+import SignupScreen from './(auth)/signup';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const { session, loading, initialize } = useAuth();
-  const segments = useSegments();
-  const router = useRouter();
+  const [showSignup, setShowSignup] = useState(false);
 
   useEffect(() => {
     initialize();
   }, []);
-
-  useEffect(() => {
-    if (loading) return;
-
-    const inAuthGroup = segments[0] === '(auth)';
-
-    if (!session && !inAuthGroup) {
-      router.replace('/login');
-    } else if (session && inAuthGroup) {
-      router.replace('/');
-    }
-  }, [session, loading, segments]);
 
   if (loading) {
     return (
@@ -36,12 +25,23 @@ export default function TabLayout() {
     );
   }
 
-  const isAuthScreen = segments[0] === '(auth)';
+  if (!session) {
+    return (
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <AnimatedSplashOverlay />
+        {showSignup ? (
+          <SignupScreen onNavigateToLogin={() => setShowSignup(false)} />
+        ) : (
+          <LoginScreen onNavigateToSignup={() => setShowSignup(true)} />
+        )}
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
-      {isAuthScreen ? <Slot /> : <AppTabs />}
+      <AppTabs />
     </ThemeProvider>
   );
 }
