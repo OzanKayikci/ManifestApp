@@ -2,6 +2,8 @@ import { DarkTheme, DefaultTheme, ThemeProvider, Slot } from 'expo-router';
 import { useColorScheme, ActivityIndicator, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import * as Notifications from 'expo-notifications';
+import { registerForPushNotificationsAsync } from '@/config/notifications';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import CustomBottomTabBar from '@/components/CustomBottomTabBar';
@@ -17,6 +19,25 @@ export default function TabLayout() {
   useEffect(() => {
     initialize();
   }, []);
+
+  useEffect(() => {
+    if (session) {
+      registerForPushNotificationsAsync();
+
+      const notificationListener = Notifications.addNotificationReceivedListener(notification => {
+        console.log('Notification received in foreground:', notification);
+      });
+
+      const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+        console.log('Notification clicked by user:', response);
+      });
+
+      return () => {
+        notificationListener.remove();
+        responseListener.remove();
+      };
+    }
+  }, [session]);
 
   if (loading) {
     return (

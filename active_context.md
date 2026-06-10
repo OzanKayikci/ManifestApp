@@ -1,34 +1,35 @@
-# active_context.md (Sprint Sözleşmesi - Sprint 3)
+# active_context.md (Sprint Sözleşmesi - Sprint 4)
 
 ## 1. Vizyon Özeti
-Office Quest uygulamasının 5 ana ekranını (Dashboard, Görevler, Feed, Leaderboard ve Heroes Journey) Stitch tasarımları ve PRD doğrultusunda React Native/Expo Router ile kodlamak, Supabase Repository katmanına bağlamak ve tam çalışır hale getirmek.
+Office Quest uygulamasına yerel bildirim (Local Notification) desteği eklemek, görev tamamlama, rozet kilit açma ve Yapay Zeka Coach Aura'nın sosyal rekabet tetikleyicilerini gerçek mobil bildirimler olarak cihaza göndermek. `expo-notifications` paketini kurmak ve yapılandırmak.
 
 ---
 
 ## 2. Kapsam
 
 ### Yapılacaklar:
-- **Sekmeli Navigasyon Güncellemesi:**
-  - `src/components/app-tabs.tsx` ve `src/components/app-tabs.web.tsx` dosyalarını 5 ana sekmeyi (Home, Quests, Social, Rank, Journey) içerecek şekilde güncellemek.
-- **Ekranların Kodlanması:**
-  - **E1) Dashboard (Home - `index.tsx`):** Profil özeti (XP, Level, Günlük Çarpan/Streak alev ikonu), aktif günlük görev kartı, bir sonraki seviyeye kalan XP progress barı.
-  - **E2) Quests & Görev Tamamlama (`quests.tsx`):** Kategorilere göre (Mutfak, Stok, Gün Başı, Gün Sonu) tüm aktif görevler, görev seçilince açılan "Bu İşi Ben Yaptım" fotoğraf çekme/seçme mock modal'ı ve tamamlanma başarısı.
-  - **E3) Social Feed (`feed.tsx`):** Instagram benzeri dikey akış kartları (Kullanıcı avatarı, kullanıcı adı, XP, görev adı, yüklenen fotoğraf, zaman, beğeni/yorum butonları).
-  - **E4) Leaderboard (`leaderboard.tsx`):** Günlük/Haftalık/Aylık/Yıllık sıralama tablosu ve kişisel Delta XP kartı (Rakibini geçmek için kalan XP ve önerilen görevler/rozetler).
-  - **E5) Heroes Journey (`journey.tsx`):** Duolingo benzeri dikey rozet yol haritası (kilitli/açık durumlar, progress bar yüzdeleri).
+- **Kütüphane Kurulumu:**
+  - `expo-notifications` paketini ve gerekli bağımlılıkları yüklemek.
+- **Bildirim Yöneticisi Entegrasyonu (`src/config/notifications.ts`):**
+  - İzin isteme, Android bildirim kanalı oluşturma (yüksek öncelikli/titreşimli) ve yerel bildirim tetikleme işlevleri.
+- **Dinamik Yerel Bildirim Senaryoları:**
+  - **Kişisel Başarı:** Kullanıcı bir görev tamamladığında anında yerel bildirim tetikleme: *"Görev Tamamlandı! +38 XP kazandın."*
+  - **Rozet Kilit Açma:** Bir rozet kazanıldığında veya ilerleme eşiği aşıldığında bildirim: *"Tebrikler! 'Çaylak Kahveci' rozetinin kilidi açıldı! ☕🎉"*
+  - **Sosyal Rekabet (Simüle):** Görev tamamlandıktan 10 saniye sonra simüle edilmiş bir rakip bildirimi: *"Sarah 'Filtre Kahve Hazırlama' görevini tamamladı. Sıralamada seni geçmek üzere!"*
+- **Layout Entegrasyonu:**
+  - Root `_layout.tsx` dosyasında bildirim izinlerini başlatmak ve gelen bildirim dinleyicilerini (foreground notification handler) kurmak.
 
 ### Yapılmayacaklar (Bu Sprint Dışı):
-- Gerçek Push Notification entegrasyonu (Sonraki sprint konusu).
-- Gerçek kamera donanımı erişimi (Hackathon hızı için cihaz galerisinden mock görsel seçimi veya önceden tanımlanmış görseller kullanılacaktır).
+- Harici bir Push Notification sunucusu (FCM veya APNS gibi) üzerinden uzaktan push gönderme (Hackathon hızı ve Expo Go kısıtları nedeniyle tamamen yerel/simüle bildirim altyapısı kurulacaktır).
 
 ---
 
 ## 3. Sprint Sözleşmesi (Başarı Kriterleri)
-1. **Navigasyon Geçişleri:** 5 ana sekme arasında geçişlerin kusursuz çalışması.
-2. **Repository Bağlantısı:** Ekranlardaki verilerin Supabase repository'lerinden (veya mock modda ise mock veri kaynaklarından) dinamik olarak okunması ve görev tamamlandığında veri katmanının (XP, alev, feed ve rozet ilerlemeleri) anında güncellenmesi.
+1. **İzin İstemi:** Uygulama açılışında bildirim izninin istenmesi ve hata loglarında izin durumunun doğrulanması.
+2. **Yerel Bildirim Gönderimi:** Kullanıcı bir görevi tamamladığında bildirim ses ve banner'ının cihazda (veya simülatörde) görünmesi.
 3. **Derleme Doğrulaması:** `npx expo export` komutunun sıfır hatayla derleme yapması.
 
 ---
 
 ## 4. Engeller & Riskler (Obstacles)
-- **Stitch İkonları ve Stil Uyumu:** Stitch tasarımlarında Google Material İkonları kullanılmıştır. Expo üzerinde bu ikonları vektörel veya SVG formatında uyumlu hale getirmeliyiz.
+- **Simülatör Kısıtları:** iOS simülatörleri yerel bildirim ses ve banner'ını her zaman tam göstermeyebilir. Testleri fiziksel cihazda Expo Go kullanarak veya Android emülatöründe gerçekleştireceğiz.

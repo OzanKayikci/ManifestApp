@@ -3,16 +3,14 @@ import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Modal, Image, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { Quest, QuestRepository } from '@/repositories/QuestRepository';
+import { BADGE_DEFINITIONS } from '@/repositories/BadgeRepository';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { triggerLocalNotification } from '@/config/notifications';
+import * as ImagePicker from 'expo-image-picker';
 
 // Predefined mock photos that user can select as "photo proof"
-const MOCK_PROOF_PHOTOS = [
-  { id: 'p1', label: '☕ Kahve Makinesi Kanıtı', url: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=500' },
-  { id: 'p2', label: '📦 Düzenli Mutfak Dolabı', url: 'https://images.unsplash.com/photo-1577962917302-cd874c4e31d2?w=500' },
-  { id: 'p3', label: '🧹 Boş Çöp Kutusu', url: 'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=500' },
-  { id: 'p4', label: '✨ Düzenli Çalışma Masası', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=500' },
-];
+// No mock photos needed anymore as we use the device camera or gallery
 
 export default function QuestsScreen() {
   const { user, isMock, refreshProfile } = useAuth();
@@ -56,20 +54,67 @@ export default function QuestsScreen() {
     setSelectedPhoto(null); // Reset photo
   };
 
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        alert('Kamerayı kullanmak için izin vermelisiniz.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelectedPhoto(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error('Error taking photo:', err);
+      alert('Fotoğraf çekilirken bir hata oluştu.');
+    }
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        alert('Galeriye erişmek için izin vermelisiniz.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelectedPhoto(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error('Error picking image:', err);
+      alert('Fotoğraf seçilirken bir hata oluştu.');
+    }
+  };
+
   const handleCompleteQuest = async () => {
     if (!selectedQuest || !user) return;
+    if (!selectedPhoto) {
+      alert('Lütfen görevi tamamladığınızı kanıtlamak için bir fotoğraf çekin veya seçin.');
+      return;
+    }
     setCompleting(true);
 
     try {
-      // Use selected mock photo or fall back to a default
-      const finalPhoto = selectedPhoto || MOCK_PROOF_PHOTOS[0].url;
-      
       const result = await QuestRepository.completeQuest(
         user.id,
         selectedQuest.name,
         selectedQuest.category,
         selectedQuest.points,
-        finalPhoto
+        selectedPhoto
       );
 
       if (result && result.success) {
@@ -77,10 +122,44 @@ export default function QuestsScreen() {
         setMultiplierUsed(result.multiplierUsed);
         setNewXPTotal(result.newPointsTotal);
         setShowSuccess(true);
+        
+        // Save current name for notifications before resetting selectedQuest
+        const completedQuestName = selectedQuest.name;
+
         setSelectedQuest(null);
 
         // Instantly refresh profile in the Zustand auth store
         await refreshProfile();
+
+        // Trigger Local Notification for success
+        triggerLocalNotification(
+          'Görev Tamamlandı! 🎉',
+          `"${completedQuestName}" başarıyla tamamlandı. +${result.pointsEarned} XP kazandın!`
+        );
+
+        // Check and trigger real badge unlocks
+        if (result.unlockedBadges && result.unlockedBadges.length > 0) {
+          result.unlockedBadges.forEach((badgeName, idx) => {
+            const badgeDef = BADGE_DEFINITIONS[badgeName];
+            const displayName = badgeDef ? badgeDef.displayName : badgeName;
+            const icon = badgeDef ? badgeDef.icon : '🎉';
+            
+            setTimeout(() => {
+              triggerLocalNotification(
+                `Rozet Açıldı! ${icon}🎉`,
+                `Tebrikler! "${displayName}" rozetinin kilidi açıldı!`
+              );
+            }, (idx + 1) * 3000);
+          });
+        }
+
+        // Simulate competitive/social push notification after 10 seconds
+        setTimeout(() => {
+          triggerLocalNotification(
+            'Sosyal Akış Güncellemesi ⚡️',
+            'Sarah "Filtre Kahve Hazırlama" görevini tamamladı. Sıralamada seni geçmek üzere!'
+          );
+        }, 10000);
       }
     } catch (err) {
       console.error('Error completing quest:', err);
@@ -275,29 +354,27 @@ export default function QuestsScreen() {
 
                 {/* Photo Proof Selector */}
                 <View style={styles.proofSection}>
-                  <Text style={styles.proofSectionTitle}>GÖREV KANITI (MOCK FOTOĞRAF SEÇİN)</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.proofPhotosRow}>
-                    {MOCK_PROOF_PHOTOS.map((photo) => {
-                      const isSelected = selectedPhoto === photo.url;
-                      return (
-                        <Pressable
-                          key={photo.id}
-                          style={[styles.proofCard, isSelected && styles.proofCardActive]}
-                          onPress={() => setSelectedPhoto(photo.url)}
-                        >
-                          <Image style={styles.proofImage} source={{ uri: photo.url }} />
-                          <View style={styles.proofCardFooter}>
-                            <Text style={styles.proofCardLabel} numberOfLines={1}>{photo.label}</Text>
-                          </View>
-                          {isSelected && (
-                            <View style={styles.selectedTick}>
-                              <Text style={styles.selectedTickText}>✓</Text>
-                            </View>
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
+                  <Text style={styles.proofSectionTitle}>GÖREV FOTOĞRAFI KANITI</Text>
+                  
+                  {!selectedPhoto ? (
+                    <View style={styles.photoButtonsRow}>
+                      <Pressable style={styles.photoActionButton} onPress={handleTakePhoto}>
+                        <Text style={styles.photoActionEmoji}>📸</Text>
+                        <Text style={styles.photoActionButtonText}>Fotoğraf Çek</Text>
+                      </Pressable>
+                      <Pressable style={styles.photoActionButton} onPress={handlePickImage}>
+                        <Text style={styles.photoActionEmoji}>🖼️</Text>
+                        <Text style={styles.photoActionButtonText}>Galeriden Seç</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <View style={styles.previewContainer}>
+                      <Image style={styles.previewImage} source={{ uri: selectedPhoto }} />
+                      <Pressable style={styles.removePhotoButton} onPress={() => setSelectedPhoto(null)}>
+                        <Text style={styles.removePhotoText}>Fotoğrafı Kaldır ✕</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
 
                 {/* Action Buttons */}
@@ -901,6 +978,55 @@ const styles = StyleSheet.create({
   successCloseButtonText: {
     color: '#ffffff',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  photoButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  photoActionButton: {
+    flex: 1,
+    height: 90,
+    backgroundColor: '#f5f2fe',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#c7c4d7',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  photoActionEmoji: {
+    fontSize: 24,
+  },
+  photoActionButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4648d4',
+  },
+  previewContainer: {
+    width: '100%',
+    alignItems: 'center',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#c7c4d7',
+    backgroundColor: '#ffffff',
+  },
+  previewImage: {
+    width: '100%',
+    height: 180,
+    resizeMode: 'cover',
+  },
+  removePhotoButton: {
+    width: '100%',
+    backgroundColor: '#ffdad6',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  removePhotoText: {
+    color: '#ba1a1a',
+    fontSize: 12,
     fontWeight: '700',
   },
 });

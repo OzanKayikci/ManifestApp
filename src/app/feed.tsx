@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth, UserProfile } from '@/hooks/useAuth';
 import { UserQuest, QuestRepository } from '@/repositories/QuestRepository';
+import { UserRepository } from '@/repositories/UserRepository';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function FeedScreen() {
   const { user } = useAuth();
   const router = useRouter();
 
   const [feed, setFeed] = useState<UserQuest[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
   
   // Local interaction counts to make buttons interactive
@@ -30,14 +33,34 @@ export default function FeedScreen() {
       const posts = await QuestRepository.getFeed();
       setFeed(posts);
 
-      // Initialize reactions randomly for mock cards, keep user-added claps
+      const allUsers = await UserRepository.getAllUsers();
+      setUsers(allUsers);
+
+      const isMock = useAuth.getState().isMock;
+
+      // Get user's clicked reactions from AsyncStorage
+      let storedClicked: Record<string, Record<string, boolean>> = {};
+      try {
+        const storedClickedRaw = await AsyncStorage.getItem(`clicked_reactions_${user?.id}`);
+        if (storedClickedRaw) {
+          storedClicked = JSON.parse(storedClickedRaw);
+        }
+      } catch (err) {
+        console.warn('Failed to load local reaction states:', err);
+      }
+
       const initialReactions: typeof reactions = {};
       posts.forEach(post => {
+        const claps = post.claps_count ?? (isMock ? Math.floor(Math.random() * 20) + 5 : 0);
+        const fires = post.fires_count ?? (isMock ? Math.floor(Math.random() * 30) + 10 : 0);
+        const hearts = post.hearts_count ?? (isMock ? Math.floor(Math.random() * 15) + 3 : 0);
+        const postClicked = storedClicked[post.id] || { claps: false, fires: false, hearts: false };
+
         initialReactions[post.id] = {
-          claps: Math.floor(Math.random() * 20) + 5,
-          fires: Math.floor(Math.random() * 30) + 10,
-          hearts: Math.floor(Math.random() * 15) + 3,
-          clicked: {}
+          claps,
+          fires,
+          hearts,
+          clicked: postClicked
         };
       });
       setReactions(initialReactions);
@@ -48,24 +71,46 @@ export default function FeedScreen() {
     }
   };
 
-  const toggleReaction = (postId: string, type: 'claps' | 'fires' | 'hearts') => {
-    setReactions(prev => {
-      const current = prev[postId] || { claps: 0, fires: 0, hearts: 0, clicked: {} };
-      const isClicked = current.clicked[type];
-      const countDiff = isClicked ? -1 : 1;
+  const toggleReaction = async (postId: string, type: 'claps' | 'fires' | 'hearts') => {
+    const current = reactions[postId] || { claps: 0, fires: 0, hearts: 0, clicked: {} };
+    const isClicked = !!current.clicked[type];
+    const countDiff = isClicked ? -1 : 1;
 
+    // Update local state instantly
+    setReactions(prev => {
+      const postReacts = prev[postId] || { claps: 0, fires: 0, hearts: 0, clicked: {} };
       return {
         ...prev,
         [postId]: {
-          ...current,
-          [type]: Math.max(0, current[type] + countDiff),
+          ...postReacts,
+          [type]: Math.max(0, postReacts[type] + countDiff),
           clicked: {
-            ...current.clicked,
+            ...postReacts.clicked,
             [type]: !isClicked
           }
         }
       };
     });
+
+    // Update AsyncStorage
+    try {
+      const storedClickedRaw = await AsyncStorage.getItem(`clicked_reactions_${user?.id}`);
+      const storedClicked = storedClickedRaw ? JSON.parse(storedClickedRaw) : {};
+      if (!storedClicked[postId]) {
+        storedClicked[postId] = { claps: false, fires: false, hearts: false };
+      }
+      storedClicked[postId][type] = !isClicked;
+      await AsyncStorage.setItem(`clicked_reactions_${user?.id}`, JSON.stringify(storedClicked));
+    } catch (err) {
+      console.warn('Failed to save reaction state locally:', err);
+    }
+
+    // Update Supabase
+    try {
+      await QuestRepository.toggleReaction(postId, type, !isClicked);
+    } catch (err) {
+      console.error('Failed to persist reaction on Supabase:', err);
+    }
   };
 
   const getElapsedTime = (isoString: string) => {
@@ -78,13 +123,6 @@ export default function FeedScreen() {
     if (diffHours < 24) return `${diffHours} sa önce`;
     return `${Math.floor(diffHours / 24)} gün önce`;
   };
-
-  const activeUsers = [
-    { name: 'Sarah P.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', border: '#6b38d4' },
-    { name: 'Ahmet Y.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', border: '#4648d4' },
-    { name: 'Elena R.', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', border: '#ffe16d' },
-    { name: 'Can D.', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150', border: '#efecf8' },
-  ];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -116,14 +154,21 @@ export default function FeedScreen() {
               </View>
               <Text style={styles.storyName}>Paylaşım Yap</Text>
             </Pressable>
-            {activeUsers.map((item, idx) => (
-              <View key={idx} style={styles.storyContainer}>
-                <View style={[styles.storyCircle, { borderColor: item.border }]}>
-                  <Image style={styles.storyAvatar} source={{ uri: item.avatar }} />
+            {users.map((item, idx) => {
+              const borderColors = ['#6b38d4', '#4648d4', '#ffe16d', '#efecf8'];
+              const borderColor = borderColors[idx % borderColors.length];
+              return (
+                <View key={item.id} style={styles.storyContainer}>
+                  <View style={[styles.storyCircle, { borderColor }]}>
+                    <Image 
+                      style={styles.storyAvatar} 
+                      source={{ uri: UserRepository.getUserAvatar(item.username) }} 
+                    />
+                  </View>
+                  <Text style={styles.storyName} numberOfLines={1}>{item.username}</Text>
                 </View>
-                <Text style={styles.storyName}>{item.name}</Text>
-              </View>
-            ))}
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -153,10 +198,7 @@ export default function FeedScreen() {
                       <View style={styles.avatarContainer}>
                         <Image
                           style={styles.cardAvatar}
-                          source={{ uri: post.user_id === user?.id 
-                            ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
-                            : `https://images.unsplash.com/photo-${post.user?.username === 'Sarah' ? '1494790108377-be9c29b29330' : '1507003211169-0a1dd7228f2d'}?w=150`
-                          }}
+                          source={{ uri: UserRepository.getUserAvatar(post.user?.username || 'Gezgin') }}
                         />
                         <View style={styles.cardLevelBadge}>
                           <Text style={styles.cardLevelText}>{userCompletedTag}</Text>
