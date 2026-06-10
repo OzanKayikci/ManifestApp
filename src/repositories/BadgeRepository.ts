@@ -62,8 +62,10 @@ export class BadgeRepository {
   static async updateBadgeProgressAfterQuest(
     userId: string,
     category: string,
-    questName: string
-  ): Promise<void> {
+    questName: string,
+    hasPhoto: boolean
+  ): Promise<string[]> {
+    const unlockedBadgeNames: string[] = [];
     try {
       const isMock = useAuth.getState().isMock;
       const isKahve = questName.toLowerCase().includes('kahve');
@@ -78,6 +80,11 @@ export class BadgeRepository {
         const currentProgress = existing ? existing.progress : 0;
         const newProgress = currentProgress + 1;
         const isUnlocked = newProgress >= threshold;
+        const wasUnlockedBefore = existing ? existing.is_unlocked : false;
+
+        if (isUnlocked && !wasUnlockedBefore) {
+          unlockedBadgeNames.push(badgeName);
+        }
 
         if (isMock) {
           if (existing) {
@@ -132,7 +139,9 @@ export class BadgeRepository {
       }
 
       await incrementBadge('İlk paylaşım');
-      await incrementBadge('İlk fotoğraf');
+      if (hasPhoto) {
+        await incrementBadge('İlk fotoğraf');
+      }
 
       // Handle daily count streak
       let dailyCount = 1;
@@ -146,13 +155,18 @@ export class BadgeRepository {
           .select('*', { count: 'exact', head: true })
           .eq('user_id', userId)
           .gte('created_at', startOfDay.toISOString());
-        dailyCount = count || 1;
+        dailyCount = (count || 0) + 1; // +1 since we're currently inserting/running the new quest completion
       }
       
       const updateStreakBadge = async (badgeName: string) => {
         const existing = badgeMap.get(badgeName);
         const threshold = BADGE_DEFINITIONS[badgeName]?.threshold || 1;
         const isUnlocked = dailyCount >= threshold;
+        const wasUnlockedBefore = existing ? existing.is_unlocked : false;
+
+        if (isUnlocked && !wasUnlockedBefore) {
+          unlockedBadgeNames.push(badgeName);
+        }
 
         if (isMock) {
           if (existing) {
@@ -198,8 +212,10 @@ export class BadgeRepository {
       await updateStreakBadge('Unstoppable');
       await updateStreakBadge('Machine Mode');
 
+      return unlockedBadgeNames;
     } catch (error) {
       console.error('Error inside updateBadgeProgressAfterQuest:', error);
+      return [];
     }
   }
 }
