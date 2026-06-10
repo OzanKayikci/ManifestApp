@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Quest, QuestRepository } from '@/repositories/QuestRepository';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { triggerLocalNotification } from '@/config/notifications';
 
 // Predefined mock photos that user can select as "photo proof"
 const MOCK_PROOF_PHOTOS = [
@@ -77,10 +78,38 @@ export default function QuestsScreen() {
         setMultiplierUsed(result.multiplierUsed);
         setNewXPTotal(result.newPointsTotal);
         setShowSuccess(true);
+        
+        // Save current name for notifications before resetting selectedQuest
+        const completedQuestName = selectedQuest.name;
+
         setSelectedQuest(null);
 
         // Instantly refresh profile in the Zustand auth store
         await refreshProfile();
+
+        // Trigger Local Notification for success
+        triggerLocalNotification(
+          'Görev Tamamlandı! 🎉',
+          `"${completedQuestName}" başarıyla tamamlandı. +${result.pointsEarned} XP kazandın!`
+        );
+
+        // Check and trigger mock badge unlock if coffee quest
+        if (completedQuestName.toLowerCase().includes('kahve')) {
+          setTimeout(() => {
+            triggerLocalNotification(
+              'Rozet Açıldı! ☕🎉',
+              'Tebrikler! "Çaylak Kahveci" rozetinin kilidi açıldı!'
+            );
+          }, 3000);
+        }
+
+        // Simulate competitive/social push notification after 10 seconds
+        setTimeout(() => {
+          triggerLocalNotification(
+            'Sosyal Akış Güncellemesi ⚡️',
+            'Sarah "Filtre Kahve Hazırlama" görevini tamamladı. Sıralamada seni geçmek üzere!'
+          );
+        }, 10000);
       }
     } catch (err) {
       console.error('Error completing quest:', err);
