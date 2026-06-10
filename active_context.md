@@ -1,33 +1,37 @@
-# active_context.md (Sprint Sözleşmesi)
+# active_context.md (Sprint Sözleşmesi - Sprint 2)
 
 ## 1. Vizyon Özeti
-Office Quest mobil uygulamasını Expo (React Native) ile sıfırdan kurmak, gerekli temel paketleri (Supabase, Zustand vb.) entegre etmek ve projenin hatasız derlenip çalışabilir durumda olduğunu `npx expo export` testiyle doğrulamak.
+Office Quest uygulamasının veri katmanını ve kimlik doğrulama (Authentication) akışını kurmak. Supabase üzerinde PostgreSQL tablolarını oluşturacak SQL şemasını hazırlamak, Supabase Auth ile uyumlu Login/Sign Up ekranlarını ve veri erişim repository'lerini entegre etmek.
 
 ---
 
 ## 2. Kapsam
 
 ### Yapılacaklar:
-- Proje kök dizininde Expo (React Native) projesini başlatmak.
-- Temel bağımlılıkları (`@supabase/supabase-js`, `zustand`, `react-native-url-polyfill`) kurmak.
-- Klasör mimarisini (components, repositories, screens, styles, config) oluşturmak.
-- Supabase istemci bağlantısını (`config/supabase.js`) kurmak.
-- Projenin başarıyla derlenebildiğini doğrulamak.
+- **Veritabanı Kurulumu:** Supabase SQL Editor'da çalıştırılacak tablo oluşturma script'ini hazırlamak.
+  - `users`, `quests`, `user_quests` (feed), `user_badges` (badges progress) tabloları.
+- **Repository Sınıfları (Repository Pattern):**
+  - `src/repositories/UserRepository.ts`: Profil okuma, puan güncelleme.
+  - `src/repositories/QuestRepository.ts`: Görev listesi çekme.
+  - `src/repositories/BadgeRepository.ts`: Rozet durumu sorgulama ve güncelleme.
+- **Kimlik Doğrulama (Auth State):**
+  - Supabase Auth state'ini yöneten Zustand hook'u veya React Context yapısı (`src/hooks/useAuth.ts` veya `src/context/AuthContext.tsx`).
+- **Giriş/Kayıt Ekranları:**
+  - `src/app/login.tsx` ve `src/app/signup.tsx` ekranlarının oluşturulması ve Expo Router yönlendirmesi.
+  - Oturum açılmamışsa kullanıcının otomatik olarak Login ekranına yönlendirilmesi.
 
 ### Yapılmayacaklar (Bu Sprint Dışı):
-- Gerçek UI ekranlarının tasarlanması (Dashboard, Feed, Leaderboard vb.).
-- Supabase üzerinde veritabanı tablolarının oluşturulması veya veri okuma/yazma işlemleri.
-- Push notification altyapısının kodlanması.
+- Ana Dashboard (E1), Feed (E3) ve Leaderboard (E4) ekranlarının son görsel tasarımları.
+- Gerçek kamera entegrasyonu (mock fotoğraf yükleme kullanılacaktır).
 
 ---
 
 ## 3. Sprint Sözleşmesi (Başarı Kriterleri)
-1. **Paket Kurulumu:** `package.json` dosyasının oluşması ve içinde `expo` ile `@supabase/supabase-js` paketlerinin yer alması.
-2. **Derleme Doğrulaması:** `npx expo export` komutunun terminalde sıfır hata (exit code: 0) ile çalışması.
-3. **Supabase Entegrasyonu:** Supabase istemcisinin (`supabase.js`) initialized olması ve `react-native-url-polyfill` importunun yapılmış olması.
+1. **Şema Doğrulaması:** Supabase tablolara yönelik SQL DDL betiğinin eksiksiz hazır olması.
+2. **Kayıt/Giriş Akışı:** Kullanıcı e-posta/şifre ile kayıt olabilmeli, giriş yapabilmeli ve oturum durumu (`session`) uygulama genelinde dinlenebilmeli.
+3. **Derleme Kontrolü:** `npx expo export` komutunun sıfır hatayla derleme yapması.
 
 ---
 
 ## 4. Engeller & Riskler (Obstacles)
-- **Supabase credentials eksikliği:** Başlangıçta Supabase URL ve Anon Key değerleri `.env` dosyasından veya geçici mock değerlerden okunacak şekilde esnek kurgulanmalıdır.
-- **Hackathon Hız Kısıtı:** İlk kurulumun 15 dakikayı geçmemesi, Xcode/Android Studio yerel derleme araçlarının kullanılmayıp sadece Expo CLI derlemesinin test edilmesi kritik önemdedir.
+- **Supabase API Anahtarları:** Proje çalışırken Supabase bağlantısının kurulabilmesi için kullanıcının yerel ortamda kendi Supabase projesinin credentials bilgilerini `.env` dosyasına yerleştirmesi gerekecektir.

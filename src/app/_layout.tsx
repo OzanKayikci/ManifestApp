@@ -1,11 +1,43 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, ActivityIndicator, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
+import LoginScreen from './(auth)/login';
+import SignupScreen from './(auth)/signup';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const { session, loading, initialize } = useAuth();
+  const [showSignup, setShowSignup] = useState(false);
+
+  useEffect(() => {
+    initialize();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colorScheme === 'dark' ? '#1b1b23' : '#fcf8ff' }}>
+        <ActivityIndicator size="large" color="#4648d4" />
+      </View>
+    );
+  }
+
+  if (!session) {
+    return (
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <AnimatedSplashOverlay />
+        {showSignup ? (
+          <SignupScreen onNavigateToLogin={() => setShowSignup(false)} />
+        ) : (
+          <LoginScreen onNavigateToSignup={() => setShowSignup(true)} />
+        )}
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
