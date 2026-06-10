@@ -25,8 +25,6 @@ interface AuthState {
 const isPlaceholder = process.env.EXPO_PUBLIC_SUPABASE_URL === undefined || 
                       process.env.EXPO_PUBLIC_SUPABASE_URL === '' || 
                       process.env.EXPO_PUBLIC_SUPABASE_URL.includes('placeholder-project');
-const shouldForceFreshAuthOnLocalPreview =
-  typeof window !== 'undefined' && window.location.hostname === 'localhost';
 
 export const useAuth = create<AuthState>((set, get) => ({
   session: null,
@@ -35,17 +33,6 @@ export const useAuth = create<AuthState>((set, get) => ({
   isMock: isPlaceholder,
 
   initialize: async () => {
-    if (shouldForceFreshAuthOnLocalPreview && !isPlaceholder) {
-      try {
-        await supabase.auth.signOut();
-      } catch (err) {
-        console.warn('Supabase signOut failed while resetting local preview auth:', err);
-      }
-
-      set({ session: null, user: null, loading: false });
-      return;
-    }
-
     if (isPlaceholder) {
       console.warn("Using MOCK Auth mode because Supabase keys are placeholders.");
       set({ session: null, user: null, loading: false });

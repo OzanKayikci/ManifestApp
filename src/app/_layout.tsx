@@ -33,8 +33,8 @@ export default function TabLayout() {
       });
 
       return () => {
-        Notifications.removeNotificationSubscription(notificationListener);
-        Notifications.removeNotificationSubscription(responseListener);
+        notificationListener.remove();
+        responseListener.remove();
       };
     }
   }, [session]);

@@ -4,10 +4,39 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { UserRepository } from '@/repositories/UserRepository';
 
 export default function HomeScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
+
+  const [playerAhead, setPlayerAhead] = useState<string | null>(null);
+  const [pointsDiff, setPointsDiff] = useState<number>(0);
+  const [userRank, setUserRank] = useState<number>(1);
+
+  useEffect(() => {
+    const fetchCoachData = async () => {
+      try {
+        const allUsers = await UserRepository.getAllUsers();
+        const currentIndex = allUsers.findIndex(u => u.id === user?.id);
+        if (currentIndex > 0) {
+          const ahead = allUsers[currentIndex - 1];
+          setPlayerAhead(ahead.username);
+          setPointsDiff(ahead.points - allUsers[currentIndex].points);
+          setUserRank(currentIndex + 1);
+        } else {
+          setPlayerAhead(null);
+          setPointsDiff(0);
+          setUserRank(currentIndex === 0 ? 1 : 1);
+        }
+      } catch (err) {
+        console.error('Error loading coach data on index:', err);
+      }
+    };
+    if (user) {
+      fetchCoachData();
+    }
+  }, [user?.points]);
 
   // Dynamic Level calculation based on points
   // Each level is 200 XP for the sake of progression
@@ -126,7 +155,15 @@ export default function HomeScreen() {
               <Text style={styles.coachName}>Yapay Zeka Aura</Text>
             </View>
             <Text style={styles.coachSpeech}>
-              "Sıralamada <Text style={styles.coachSpeechHighlight}>Sarah'yı geçmek</Text> için sadece <Text style={styles.coachSpeechHighlight}>15 XP</Text> kaldı!"
+              {userRank === 1 ? (
+                `"Tebrikler ${user?.username || 'Gezgin'}, şu anda sıralamada 1. sıradasınız! Liderliğinizi korumak için görev tamamlamaya devam edin!"`
+              ) : playerAhead ? (
+                <>
+                  "Sıralamada <Text style={styles.coachSpeechHighlight}>{playerAhead}</Text> kullanıcısını geçmek için sadece <Text style={styles.coachSpeechHighlight}>{pointsDiff} XP</Text> kaldı!"
+                </>
+              ) : (
+                `"Görevleri tamamlayarak sıralamada yükselmeye başlayabilirsiniz!"`
+              )}
             </Text>
           </View>
         </View>

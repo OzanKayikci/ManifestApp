@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { LinearGradient } from 'expo-linear-gradient';
+import { UserRepository } from '@/repositories/UserRepository';
 
 interface LeaderboardUser {
   name: string;
@@ -16,32 +17,45 @@ interface LeaderboardUser {
 export default function LeaderboardScreen() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [leaderboardUsers, setLeaderboardUsers] = useState<LeaderboardUser[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // Dynamic Level calculation
   const xpPerLevel = 200;
   const level = Math.floor((user?.points || 0) / xpPerLevel) + 1;
 
-  // Base competitors list
-  const initialCompetitors: LeaderboardUser[] = [
-    { name: 'Ahmet L.', points: 1420, team: 'Yazılım', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', isCurrentUser: false, todayXP: 45 },
-    { name: 'Sarah K.', points: 1265, team: 'Tasarım', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', isCurrentUser: false, todayXP: 60 },
-    { name: 'Elena R.', points: 1120, team: 'İK', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', isCurrentUser: false, todayXP: 20 },
-    { name: 'Can D.', points: 850, team: 'Pazarlama', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150', isCurrentUser: false, todayXP: 30 },
-  ];
+  useEffect(() => {
+    loadLeaderboard();
+  }, [user?.points, activeTab]);
 
-  // Inject current user dynamically based on their current points from store
-  const userPoints = user?.points || 120;
-  const currentUser: LeaderboardUser = {
-    name: `Sen (${user?.username || 'Gezgin'})`,
-    points: userPoints,
-    team: 'Tasarım',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-    isCurrentUser: true,
-    todayXP: userPoints > 120 ? userPoints - 120 : 0
+  const loadLeaderboard = async () => {
+    setLoading(true);
+    try {
+      const usersList = await UserRepository.getPeriodLeaderboard(activeTab);
+      
+      const mapped = usersList.map(u => {
+        const isCurrent = u.id === user?.id;
+        const name = isCurrent ? `Sen (${u.username})` : u.username;
+        return {
+          name,
+          points: u.points,
+          team: UserRepository.getUserTeam(u.username),
+          avatar: UserRepository.getUserAvatar(u.username),
+          isCurrentUser: isCurrent,
+          todayXP: 0
+        };
+      });
+
+      setLeaderboardUsers(mapped);
+    } catch (err) {
+      console.error('Error loading leaderboard:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Merge lists and sort by points descending
-  const allPlayers = [...initialCompetitors, currentUser].sort((a, b) => b.points - a.points);
+  const allPlayers = leaderboardUsers;
+  const userPoints = user?.points || 0;
 
   // Find ranks
   const userRankIndex = allPlayers.findIndex(p => p.isCurrentUser);
@@ -49,10 +63,10 @@ export default function LeaderboardScreen() {
 
   // Find player ahead of user
   const playerAhead = userRankIndex > 0 ? allPlayers[userRankIndex - 1] : null;
-  const pointsDifference = playerAhead ? (playerAhead.points - userPoints) : 0;
+  const pointsDifference = playerAhead ? (playerAhead.points - (allPlayers[userRankIndex]?.points || 0)) : 0;
   
   // Calculate progress to overtake the player ahead
-  const overtakeProgress = playerAhead 
+  const overtakeProgress = playerAhead && playerAhead.points > 0
     ? Math.max(0, Math.min(100, Math.round(((playerAhead.points - pointsDifference) / playerAhead.points) * 100))) 
     : 100;
 
@@ -84,7 +98,12 @@ export default function LeaderboardScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      {loading && allPlayers.length === 0 ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#4648d4" />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Period Tabs */}
         <View style={styles.tabsContainer}>
           <Pressable 
@@ -234,7 +253,8 @@ export default function LeaderboardScreen() {
             })}
           </View>
         </View>
-      </ScrollView>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

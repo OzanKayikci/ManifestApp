@@ -2,6 +2,9 @@ import { supabase } from '../config/supabase';
 import { UserRepository } from './UserRepository';
 import { BadgeRepository } from './BadgeRepository';
 import { useAuth } from '../hooks/useAuth';
+import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 
 export interface Quest {
   id: string;
@@ -23,6 +26,9 @@ export interface UserQuest {
   user?: {
     username: string;
   };
+  claps_count?: number;
+  fires_count?: number;
+  hearts_count?: number;
 }
 
 // Mock Data definitions
@@ -95,7 +101,7 @@ export class QuestRepository {
     category: string,
     basePoints: number,
     photoUrl: string | null
-  ): Promise<{ success: boolean; pointsEarned: number; newPointsTotal: number; multiplierUsed: number } | null> {
+  ): Promise<{ success: boolean; pointsEarned: number; newPointsTotal: number; multiplierUsed: number; unlockedBadges: string[] } | null> {
     const isMock = useAuth.getState().isMock;
     if (isMock) {
       const pointsResult = await UserRepository.awardPoints(userId, basePoints);
@@ -116,18 +122,24 @@ export class QuestRepository {
 
       mockFeedData.unshift(newQuestCompletion);
 
-      // Update badges async
-      BadgeRepository.updateBadgeProgressAfterQuest(userId, category, questName).catch(err => {
-        console.error('Error updating badge progress:', err);
-      });
+      // Update badges
+      const unlockedBadges = await BadgeRepository.updateBadgeProgressAfterQuest(userId, category, questName, photoUrl !== null);
 
-      return { success: true, pointsEarned, newPointsTotal, multiplierUsed };
+      return { success: true, pointsEarned, newPointsTotal, multiplierUsed, unlockedBadges };
     }
 
     const pointsResult = await UserRepository.awardPoints(userId, basePoints);
     if (!pointsResult) return null;
 
     const { pointsEarned, newPointsTotal, multiplierUsed } = pointsResult;
+
+    let finalPhotoUrl = photoUrl;
+    if (photoUrl && (photoUrl.startsWith('file://') || photoUrl.startsWith('content://') || photoUrl.startsWith('data:') || photoUrl.startsWith('blob:'))) {
+      const uploadedUrl = await this.uploadQuestProof(photoUrl);
+      if (uploadedUrl) {
+        finalPhotoUrl = uploadedUrl;
+      }
+    }
 
     const { error: insertError } = await supabase
       .from('user_quests')
@@ -136,7 +148,7 @@ export class QuestRepository {
         quest_name: questName,
         category: category,
         points_earned: pointsEarned,
-        photo_url: photoUrl,
+        photo_url: finalPhotoUrl,
       });
 
     if (insertError) {
@@ -144,12 +156,10 @@ export class QuestRepository {
       return null;
     }
 
-    // Update badges async
-    BadgeRepository.updateBadgeProgressAfterQuest(userId, category, questName).catch(err => {
-      console.error('Error updating badge progress:', err);
-    });
+    // Update badges
+    const unlockedBadges = await BadgeRepository.updateBadgeProgressAfterQuest(userId, category, questName, photoUrl !== null);
 
-    return { success: true, pointsEarned, newPointsTotal, multiplierUsed };
+    return { success: true, pointsEarned, newPointsTotal, multiplierUsed, unlockedBadges };
   }
 
   static async getFeed(limit: number = 20): Promise<UserQuest[]> {
@@ -169,5 +179,87 @@ export class QuestRepository {
       return [];
     }
     return data || [];
+  }
+
+  static async uploadQuestProof(uri: string): Promise<string | null> {
+    try {
+      const isMock = useAuth.getState().isMock;
+      if (isMock) {
+        return uri;
+      }
+
+      const fileExt = 'jpg';
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+      const filePath = `proofs/${fileName}`;
+
+      let fileBody: any;
+      
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        fileBody = await response.blob();
+      } else {
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        fileBody = decode(base64);
+      }
+
+      const { data, error } = await supabase.storage
+        .from('quest-proofs')
+        .upload(filePath, fileBody, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+
+      if (error) {
+        console.error('Error uploading image to Supabase Storage:', error);
+        return null;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('quest-proofs')
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (err) {
+      console.error('Failed to upload quest proof image:', err);
+      return null;
+    }
+  }
+
+  static async toggleReaction(postId: string, type: 'claps' | 'fires' | 'hearts', increment: boolean): Promise<void> {
+    const isMock = useAuth.getState().isMock;
+    if (isMock) return;
+
+    try {
+      const columnName = type === 'claps' ? 'claps_count' : type === 'fires' ? 'fires_count' : 'hearts_count';
+      
+      const { data, error } = await supabase
+        .from('user_quests')
+        .select('claps_count, fires_count, hearts_count')
+        .eq('id', postId)
+        .single();
+        
+      if (error || !data) {
+        console.error('Error fetching reaction count before toggle:', error);
+        return;
+      }
+      
+      const currentCount = (data as any)[columnName] || 0;
+      const newCount = Math.max(0, currentCount + (increment ? 1 : -1));
+      
+      const { error: updateError } = await supabase
+        .from('user_quests')
+        .update({
+          [columnName]: newCount
+        })
+        .eq('id', postId);
+
+      if (updateError) {
+        console.error('Error updating reaction count:', updateError);
+      }
+    } catch (err) {
+      console.error('Failed to toggle reaction on Supabase:', err);
+    }
   }
 }
