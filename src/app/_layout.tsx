@@ -10,8 +10,9 @@ import SignupScreen from './(auth)/signup';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const { session, loading, initialize } = useAuth();
+  const { session, user, isMock, loading, initialize } = useAuth();
   const [showSignup, setShowSignup] = useState(false);
+  const isAuthenticated = Boolean(session && (isMock || user));
 
   useEffect(() => {
     initialize();
@@ -25,7 +26,7 @@ export default function TabLayout() {
     );
   }
 
-  if (!session) {
+  if (!isAuthenticated) {
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <AnimatedSplashOverlay />

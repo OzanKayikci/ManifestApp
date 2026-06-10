@@ -1,5 +1,5 @@
 import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedIcon } from '@/components/animated-icon';
@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/hooks/useAuth';
 
 function getDevMenuHint() {
   if (Platform.OS === 'web') {
@@ -29,9 +30,24 @@ function getDevMenuHint() {
 }
 
 export default function HomeScreen() {
+  const { signOut, user } = useAuth();
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        <ThemedView style={styles.topBar}>
+          <ThemedView>
+            <ThemedText type="smallBold">Office Quest</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {user ? `Aktif kullanici: ${user.username}` : 'Demo oturumu'}
+            </ThemedText>
+          </ThemedView>
+
+          <Pressable onPress={() => signOut()} style={styles.signOutButton}>
+            <ThemedText type="smallBold">Cikis Yap</ThemedText>
+          </Pressable>
+        </ThemedView>
+
         <ThemedView style={styles.heroSection}>
           <AnimatedIcon />
           <ThemedText type="title" style={styles.title}>
@@ -74,6 +90,19 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingBottom: BottomTabInset + Spacing.three,
     maxWidth: MaxContentWidth,
+  },
+  topBar: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: Spacing.three,
+  },
+  signOutButton: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.three,
+    backgroundColor: 'rgba(70, 72, 212, 0.12)',
   },
   heroSection: {
     alignItems: 'center',
