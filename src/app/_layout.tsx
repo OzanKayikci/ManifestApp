@@ -4,21 +4,37 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotificationsAsync } from '@/config/notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import CustomBottomTabBar from '@/components/CustomBottomTabBar';
 import LoginScreen from './(auth)/login';
 import SignupScreen from './(auth)/signup';
+import OnboardingScreen from './onboarding';
+
+const ONBOARDING_DONE_KEY = 'onboarding_completed';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const { session, user, isMock, loading, initialize } = useAuth();
   const [showSignup, setShowSignup] = useState(false);
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const isAuthenticated = Boolean(session && (isMock || user));
 
   useEffect(() => {
     initialize();
   }, []);
+
+  // Check onboarding state when user authenticates
+  useEffect(() => {
+    if (isAuthenticated) {
+      AsyncStorage.getItem(ONBOARDING_DONE_KEY).then((val) => {
+        setOnboardingDone(val === 'true');
+      });
+    } else {
+      setOnboardingDone(null);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (session) {
@@ -56,6 +72,24 @@ export default function TabLayout() {
         ) : (
           <LoginScreen onNavigateToSignup={() => setShowSignup(true)} />
         )}
+      </ThemeProvider>
+    );
+  }
+
+  // Show loading indicator while checking onboarding state
+  if (onboardingDone === null) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fcf8ff' }}>
+        <ActivityIndicator size="large" color="#4648d4" />
+      </View>
+    );
+  }
+
+  // Show onboarding if not yet done
+  if (!onboardingDone) {
+    return (
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <OnboardingScreen onDone={() => setOnboardingDone(true)} />
       </ThemeProvider>
     );
   }
