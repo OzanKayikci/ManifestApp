@@ -3,8 +3,8 @@
 Sen bu projenin ana üretici (Generator) ajanısın. Görevin, aşağıda belirtilen teknoloji yığınına uygun olarak kodları doğrudan yazmak ve değiştirmektir (`Write`, `Edit`, `Bash` araçlarını kullanarak).
 
 ## Temel Proje Konfigürasyonu
-- **Teknoloji Yığını:** React (Vite) + Tailwind CSS + Supabase BaaS (Web & Mobile PWA formatında, tüm cihazlarda tam uyumlu ve responsive)
-- **Test Komutu:** `npm run build` (Derleme kontrolü) veya `npm run dev`
+- **Teknoloji Yığını:** Expo (React Native) + Tailwind CSS (NativeWind / StyleSheet) + Supabase BaaS (iOS, Android ve Web)
+- **Test Komutu:** `npx expo export` (Derleme ve dışa aktarım kontrolü)
 - **Kullanılacak MCP Sunucusu:** `notebooklm` (BD_Architecture - 4c39cfdf-748a-44d9-a353-0fb650d1a27c)
 
 ---
@@ -25,7 +25,7 @@ Sen bu projenin ana üretici (Generator) ajanısın. Görevin, aşağıda belirt
 4 saatlik süre kısıtı ve 2 kişilik ekip yapısı nedeniyle **hız, basitlik ve sıfır operasyonel yük** odaklı bir mimari benimsenmiştir:
 
 ### 1. Katmanlı Mimari ve Tasarım Desenleri
-- **UI & View Katmanı:** Tailwind CSS ile tasarlanmış modern, responsive mobil görünüm. State yönetimi için **Zustand** veya basit **React Context** (MVVM yapısı) kullanılacaktır.
+- **UI & View Katmanı:** Expo Router (React Native) ile tasarlanmış modern mobil ekranlar. State yönetimi için **Zustand** veya basit **React Context** (MVVM yapısı) kullanılacaktır. Styling için React Native StyleSheet veya Tailwind CSS (`NativeWind`) tercih edilecektir.
 - **Veri Erişim Katmanı (Repository Pattern):** Supabase ile doğrudan iletişim kuran repository sınıfları yazılacaktır (`PostRepository`, `BadgeRepository`, `UserRepository`). UI bileşenleri doğrudan Supabase istemcisiyle konuşmak yerine bu repository'leri kullanacaktır. Bu, spagetti kod oluşmasını engeller ve AI kod yazım kalitesini artırır.
 
 ### 2. Veritabanı Şeması (PostgreSQL - Supabase)
@@ -35,5 +35,8 @@ Sen bu projenin ana üretici (Generator) ajanısın. Görevin, aşağıda belirt
 - **user_badges:** `id`, `user_id`, `badge_name`, `progress` (int), `is_unlocked` (bool), `updated_at`
 
 ### 3. Bildirim ve Deployment
-- **Push Notification:** Web Push API (Service Worker) veya tarayıcı tabanlı anlık bildirimler.
-- **Deployment:** Vercel (Frontend deployment'ı anında kurulabilir).
+- **Push Notification:** Expo Notifications ile sıfır native ayar gerektiren mobil anlık bildirim altyapısı.
+- **Deployment & Test:**
+  - Cihaz Testi: Geliştirme sürecinde **Expo Go** uygulaması ile QR kod taranarak fiziksel cihazlarda canlı test yapılacaktır.
+  - Web Deployment: Vercel (Expo Web çıktısı `dist` klasörü deploy edilebilir).
+
