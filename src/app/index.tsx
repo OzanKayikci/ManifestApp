@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Image } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Image, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { UserRepository } from '@/repositories/UserRepository';
+import { CoachRepository } from '@/repositories/CoachRepository';
 
 export default function HomeScreen() {
   const { user, signOut } = useAuth();
@@ -13,6 +14,9 @@ export default function HomeScreen() {
   const [playerAhead, setPlayerAhead] = useState<string | null>(null);
   const [pointsDiff, setPointsDiff] = useState<number>(0);
   const [userRank, setUserRank] = useState<number>(1);
+  const [isCoachModalVisible, setIsCoachModalVisible] = useState(false);
+  const [coachAdvice, setCoachAdvice] = useState<string | null>(null);
+  const [isLoadingAdvice, setIsLoadingAdvice] = useState(false);
 
   useEffect(() => {
     const fetchCoachData = async () => {
@@ -45,6 +49,21 @@ export default function HomeScreen() {
   const currentXPInLevel = (user?.points || 0) % xpPerLevel;
   const progressPercent = Math.min(Math.max(Math.round((currentXPInLevel / xpPerLevel) * 100), 0), 100);
 
+  const handleGetCoachAdvice = async () => {
+    if (!user) return;
+    setIsLoadingAdvice(true);
+    setIsCoachModalVisible(true);
+    try {
+      const advice = await CoachRepository.getCoachAdvice(user.points || 0, level, user.id);
+      setCoachAdvice(advice);
+    } catch (error) {
+      console.error('Failed to get coach advice:', error);
+      setCoachAdvice('Bugün kolay bir stok kontrolü yaparak puanını artırabilir ve ritmini yeniden başlatabilirsin.');
+    } finally {
+      setIsLoadingAdvice(false);
+    }
+  };
+
   // Emojis mapping for categories
   const categories = [
     { name: 'Mutfak', emoji: '🍳', bg: '#ffe16d', color: '#221b00' },
@@ -62,7 +81,7 @@ export default function HomeScreen() {
             <Pressable style={styles.avatarContainer} onPress={() => router.push('/profile')}>
               <Image
                 style={styles.avatar}
-                source={{ uri: UserRepository.getUserAvatar(user?.username || '') }}
+                source={{ uri: (user as any)?.avatar_url || UserRepository.getUserAvatar(user?.username || '') }}
               />
               <View style={styles.levelBadge}>
                 <Text style={styles.levelBadgeText}>LVL {level}</Text>
@@ -202,6 +221,71 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.achievementArrow}>➡️</Text>
         </View>
+
+        {/* AI Activity Coach Premium Button */}
+        <Pressable 
+          style={({ pressed }) => [styles.aiCoachButton, pressed && styles.aiCoachButtonPressed]}
+          onPress={handleGetCoachAdvice}
+        >
+          <LinearGradient
+            colors={['#8455ef', '#4648d4']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.aiCoachGradient}
+          >
+            <View style={styles.aiCoachLeft}>
+              <View style={styles.aiCoachAvatarContainer}>
+                <Text style={styles.aiCoachAvatarText}>🤖</Text>
+              </View>
+              <View>
+                <Text style={styles.aiCoachBtnTitle}>Yapay Zeka Koçu</Text>
+                <Text style={styles.aiCoachBtnSubtitle}>Sana özel aktivite önerilerini al</Text>
+              </View>
+            </View>
+            <Text style={styles.aiCoachArrow}>✨</Text>
+          </LinearGradient>
+        </Pressable>
+
+        {/* AI Coach Advice Modal */}
+        <Modal
+          visible={isCoachModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsCoachModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Aura Aktif Koçluk</Text>
+                <Pressable onPress={() => setIsCoachModalVisible(false)} style={styles.closeButton}>
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </Pressable>
+              </View>
+              
+              <View style={styles.modalContent}>
+                {isLoadingAdvice ? (
+                  <View style={styles.loaderContainer}>
+                    <ActivityIndicator size="large" color="#4648d4" />
+                    <Text style={styles.loaderText}>Öneriler hazırlanıyor...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.adviceBody}>
+                    <View style={styles.coachQuoteIcon}>
+                      <Text style={styles.coachQuoteText}>💬</Text>
+                    </View>
+                    <Text style={styles.adviceText}>{coachAdvice}</Text>
+                    <Pressable 
+                      style={styles.modalActionButton}
+                      onPress={() => setIsCoachModalVisible(false)}
+                    >
+                      <Text style={styles.modalActionButtonText}>Anlaşıldı!</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Logout Button */}
         <Pressable 
@@ -647,6 +731,154 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#eb5e28',
+    fontFamily: Platform.OS === 'ios' ? 'Inter' : 'sans-serif',
+  },
+  aiCoachButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: 20,
+    shadowColor: '#8455ef',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  aiCoachButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  aiCoachGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 18,
+  },
+  aiCoachLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  aiCoachAvatarContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  aiCoachAvatarText: {
+    fontSize: 22,
+  },
+  aiCoachBtnTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#ffffff',
+    fontFamily: Platform.OS === 'ios' ? 'Inter' : 'sans-serif',
+  },
+  aiCoachBtnSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Inter' : 'sans-serif',
+  },
+  aiCoachArrow: {
+    fontSize: 20,
+    color: '#ffffff',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(27, 27, 35, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContainer: {
+    width: '100%',
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderColor: '#f0f0f5',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1b1b23',
+    fontFamily: Platform.OS === 'ios' ? 'Inter' : 'sans-serif',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  closeButtonText: {
+    fontSize: 16,
+    color: '#767586',
+    fontWeight: '600',
+  },
+  modalContent: {
+    padding: 24,
+  },
+  loaderContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  loaderText: {
+    fontSize: 13,
+    color: '#767586',
+    marginTop: 12,
+    fontWeight: '500',
+    fontFamily: Platform.OS === 'ios' ? 'Inter' : 'sans-serif',
+  },
+  adviceBody: {
+    alignItems: 'center',
+  },
+  coachQuoteIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#e9ddff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  coachQuoteText: {
+    fontSize: 24,
+  },
+  adviceText: {
+    fontSize: 14,
+    color: '#1b1b23',
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    fontFamily: Platform.OS === 'ios' ? 'Inter' : 'sans-serif',
+  },
+  modalActionButton: {
+    width: '100%',
+    backgroundColor: '#4648d4',
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalActionButtonText: {
+    fontSize: 14,
+    color: '#ffffff',
+    fontWeight: '700',
     fontFamily: Platform.OS === 'ios' ? 'Inter' : 'sans-serif',
   },
 });
