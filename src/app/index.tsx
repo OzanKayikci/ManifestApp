@@ -59,19 +59,19 @@ export default function HomeScreen() {
         {/* Top Header */}
         <View style={styles.header}>
           <View style={styles.profileRow}>
-            <View style={styles.avatarContainer}>
+            <Pressable style={styles.avatarContainer} onPress={() => router.push('/profile')}>
               <Image
                 style={styles.avatar}
-                source={{ uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' }}
+                source={{ uri: UserRepository.getUserAvatar(user?.username || '') }}
               />
               <View style={styles.levelBadge}>
                 <Text style={styles.levelBadgeText}>LVL {level}</Text>
               </View>
-            </View>
-            <View style={styles.profileTextContainer}>
+            </Pressable>
+            <Pressable style={styles.profileTextContainer} onPress={() => router.push('/profile')}>
               <Text style={styles.welcomeText}>İyi Günler,</Text>
               <Text style={styles.userName}>{user?.username || 'Gezgin'}</Text>
-            </View>
+            </Pressable>
           </View>
           
           <View style={styles.pointsBadgeContainer}>
