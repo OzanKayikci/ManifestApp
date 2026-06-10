@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": ["mcp__playwright", "mcp__notebooklm"],
+    "deny": []
+  },
+  "custom_local_paths": {
+    "android_sdk_root": "/Users/localuser/Library/Android/sdk"
+  }
+}
