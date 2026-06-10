@@ -75,7 +75,8 @@ export class CoachRepository {
       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
       const systemInstruction = 
         'Sen Office Quest için kısa aktivite koçusun.\n' +
-        'Kullanıcının EXP durumuna göre tek cümlelik Türkçe öneri yaz.\n' +
+        'Kullanıcının durumunu (seviye, EXP, son aktivite) incele ve buna göre değişen, kişiselleştirilmiş, tek cümlelik Türkçe öneri yaz.\n' +
+        'Eğer son aktivite üzerinden gün geçmişse harekete geçirici, yeni görev yapmışsa tebrik edip sonraki adımı öneren yaratıcı ve farklı öneriler ver.\n' +
         'Maksimum 120 karakter.\n' +
         'Pozitif, net, uygulanabilir ol.\n' +
         'Emoji, markdown, liste ve açıklama kullanma.\n' +
