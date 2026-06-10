@@ -1,17 +1,18 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider, Slot } from 'expo-router';
 import { useColorScheme, ActivityIndicator, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import CustomBottomTabBar from '@/components/CustomBottomTabBar';
 import LoginScreen from './(auth)/login';
 import SignupScreen from './(auth)/signup';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const { session, loading, initialize } = useAuth();
+  const { session, user, isMock, loading, initialize } = useAuth();
   const [showSignup, setShowSignup] = useState(false);
+  const isAuthenticated = Boolean(session && (isMock || user));
 
   useEffect(() => {
     initialize();
@@ -25,7 +26,7 @@ export default function TabLayout() {
     );
   }
 
-  if (!session) {
+  if (!isAuthenticated) {
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <AnimatedSplashOverlay />
@@ -41,7 +42,10 @@ export default function TabLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
-      <AppTabs />
+      <View style={{ flex: 1 }}>
+        <Slot />
+        <CustomBottomTabBar />
+      </View>
     </ThemeProvider>
   );
 }

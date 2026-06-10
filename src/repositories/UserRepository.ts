@@ -1,8 +1,16 @@
 import { supabase } from '../config/supabase';
-import { UserProfile } from '../hooks/useAuth';
+import { UserProfile, useAuth } from '../hooks/useAuth';
+
+// In-memory store for completed quests counts today in mock mode
+let mockQuestsCompletedTodayCount = 0;
 
 export class UserRepository {
   static async getProfile(userId: string): Promise<UserProfile | null> {
+    const isMock = useAuth.getState().isMock;
+    if (isMock) {
+      return useAuth.getState().user;
+    }
+
     const { data, error } = await supabase
       .from('users')
       .select('*')
@@ -16,6 +24,11 @@ export class UserRepository {
   }
 
   static async getCompletedQuestsCountToday(userId: string): Promise<number> {
+    const isMock = useAuth.getState().isMock;
+    if (isMock) {
+      return mockQuestsCompletedTodayCount;
+    }
+
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
@@ -50,6 +63,25 @@ export class UserRepository {
     const countToday = await this.getCompletedQuestsCountToday(userId);
     const multiplier = this.calculateMultiplier(countToday);
     const pointsEarned = Math.round(basePoints * multiplier);
+
+    const isMock = useAuth.getState().isMock;
+    if (isMock) {
+      const profile = useAuth.getState().user;
+      if (!profile) return null;
+      
+      const newPointsTotal = profile.points + pointsEarned;
+      const updatedProfile: UserProfile = {
+        ...profile,
+        points: newPointsTotal,
+        current_multiplier: multiplier,
+      };
+
+      // Update Zustand auth store
+      useAuth.setState({ user: updatedProfile });
+      mockQuestsCompletedTodayCount += 1;
+
+      return { pointsEarned, newPointsTotal, multiplierUsed: multiplier };
+    }
 
     const profile = await this.getProfile(userId);
     if (!profile) return null;
